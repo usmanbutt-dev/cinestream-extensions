@@ -2,5 +2,16 @@
   "name": "CineStream Official Extensions",
   "author": "cinestream",
   "description": "Official extension repository for CineStream.",
-  "extensions": []
+  "extensions": [
+    {
+      "id": "com.cinestream.tmdb",
+      "name": "TMDB + VidSrc",
+      "version": "1.0.0",
+      "lang": "en",
+      "url": "https://raw.githubusercontent.com/usmanbutt-dev/cinestream-extensions/master/extensions/com.cinestream.tmdb.js",
+      "icon": null,
+      "nsfw": false,
+      "changelog": "v1.0.0: Initial release — TMDB metadata + VidSrc streaming for movies & TV shows."
+    }
+  ]
 }
