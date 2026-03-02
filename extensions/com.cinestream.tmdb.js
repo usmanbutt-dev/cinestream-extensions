@@ -247,13 +247,14 @@ class AnimeSource {
   // GET VIDEO SOURCES — returns embed URLs for WebView playback
   // ───────────────────────────────────────────────────────────
   //
-  // Instead of scraping fragile m3u8 URLs (which break constantly),
-  // we return embed page URLs that the app loads in a WebView.
-  // The embed sites handle all player logic server-side.
+  // Returns embed page URLs that the app loads in a WebView.
+  // Multiple providers are listed so users can switch if one
+  // serves bad quality or has issues.
   //
-  // Supported embed providers:
-  //   1. vidsrc.net  — reliable, supports TMDB IDs
-  //   2. multiembed.mov — fallback, supports TMDB IDs
+  // Providers (ordered by quality):
+  //   1. vidsrc.icu   — full-featured, often serves HD
+  //   2. autoembed.cc — clean player, less ads
+  //   3. vidsrc.net   — reliable fallback
 
   async getVideoSources(episodeUrl) {
     log("Embed sources: " + episodeUrl);
@@ -268,36 +269,40 @@ class AnimeSource {
     var sources = [];
 
     if (type === "movie") {
-      // Provider 1: vidsrc.net
+      sources.push({
+        url: "https://vidsrc.icu/embed/movie/" + tmdbId,
+        quality: "auto", type: "embed", server: "VidSrc ICU"
+      });
+      sources.push({
+        url: "https://player.autoembed.cc/embed/movie/" + tmdbId,
+        quality: "auto", type: "embed", server: "AutoEmbed"
+      });
       sources.push({
         url: "https://vidsrc.net/embed/movie?tmdb=" + tmdbId,
-        quality: "auto",
-        type: "embed",
-        server: "VidSrc"
+        quality: "auto", type: "embed", server: "VidSrc Net"
       });
-      // Provider 2: multiembed.mov
       sources.push({
         url: "https://multiembed.mov/?video_id=" + tmdbId + "&tmdb=1",
-        quality: "auto",
-        type: "embed",
-        server: "MultiEmbed"
+        quality: "auto", type: "embed", server: "MultiEmbed"
       });
     } else {
       var season = parts[2];
       var episode = parts[3];
-      // Provider 1: vidsrc.net
+      sources.push({
+        url: "https://vidsrc.icu/embed/tv/" + tmdbId + "/" + season + "/" + episode,
+        quality: "auto", type: "embed", server: "VidSrc ICU"
+      });
+      sources.push({
+        url: "https://player.autoembed.cc/embed/tv/" + tmdbId + "/" + season + "/" + episode,
+        quality: "auto", type: "embed", server: "AutoEmbed"
+      });
       sources.push({
         url: "https://vidsrc.net/embed/tv?tmdb=" + tmdbId + "&season=" + season + "&episode=" + episode,
-        quality: "auto",
-        type: "embed",
-        server: "VidSrc"
+        quality: "auto", type: "embed", server: "VidSrc Net"
       });
-      // Provider 2: multiembed.mov
       sources.push({
         url: "https://multiembed.mov/?video_id=" + tmdbId + "&tmdb=1&s=" + season + "&e=" + episode,
-        quality: "auto",
-        type: "embed",
-        server: "MultiEmbed"
+        quality: "auto", type: "embed", server: "MultiEmbed"
       });
     }
 
