@@ -272,28 +272,21 @@ class AnimeSource {
 
     try {
       var html = await http.get(embedUrl);
-      var dom = parseHtml(html);
 
-      // VidSrc embed page has data-id attributes we need.
-      var dataIdElements = dom.querySelectorAll("[data-id]");
+      // Extract data-id values using regex only (avoid parseHtml — the
+      // VidSrc embed HTML is too large/complex for the bridge's JSON
+      // serialization and causes "_Map encodable" errors).
+      var regex = /data-id="([^"]+)"/g;
       var dataIds = [];
-      for (var i = 0; i < dataIdElements.length; i++) {
-        var did = dataIdElements[i].getAttribute("data-id");
-        if (did) dataIds.push(did);
+      var match;
+      while ((match = regex.exec(html)) !== null) {
+        dataIds.push(match[1]);
       }
 
-      if (dataIds.length < 2) {
-        // Fallback: try regex extraction.
-        var regex = /data-id="([^"]+)"/g;
-        var match;
-        dataIds = [];
-        while ((match = regex.exec(html)) !== null) {
-          dataIds.push(match[1]);
-        }
-      }
+      log("VidSrc: found " + dataIds.length + " data-id values");
 
       if (dataIds.length < 2) {
-        log("VidSrc: could not find data-id values in embed page");
+        log("VidSrc: could not find enough data-id values in embed page");
         return { sources: [], subtitles: [] };
       }
 
