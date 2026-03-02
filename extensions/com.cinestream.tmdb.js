@@ -13,7 +13,6 @@
 var TMDB_API_KEY = "28ba4afb32bc39ee33468dfdd2dced47";
 var TMDB_BASE = "https://api.themoviedb.org/3";
 var TMDB_IMG = "https://image.tmdb.org/t/p";
-var VIDSRC_HOST = "vidsrc.cc";
 
 const manifest = {
   id: "com.cinestream.tmdb",
@@ -245,11 +244,19 @@ class AnimeSource {
   }
 
   // ───────────────────────────────────────────────────────────
-  // GET VIDEO SOURCES — scrape VidSrc for streaming URLs
+  // GET VIDEO SOURCES — returns embed URLs for WebView playback
   // ───────────────────────────────────────────────────────────
+  //
+  // Instead of scraping fragile m3u8 URLs (which break constantly),
+  // we return embed page URLs that the app loads in a WebView.
+  // The embed sites handle all player logic server-side.
+  //
+  // Supported embed providers:
+  //   1. vidsrc.net  — reliable, supports TMDB IDs
+  //   2. multiembed.mov — fallback, supports TMDB IDs
 
   async getVideoSources(episodeUrl) {
-    log("VidSrc sources: " + episodeUrl);
+    log("Embed sources: " + episodeUrl);
 
     // episodeUrl format:
     //   "movie/12345"
@@ -258,112 +265,44 @@ class AnimeSource {
     var parts = episodeUrl.split("/");
     var type = parts[0];
     var tmdbId = parts[1];
+    var sources = [];
 
-    var embedUrl;
     if (type === "movie") {
-      embedUrl = "https://" + VIDSRC_HOST + "/v2/embed/movie/" + tmdbId;
+      // Provider 1: vidsrc.net
+      sources.push({
+        url: "https://vidsrc.net/embed/movie?tmdb=" + tmdbId,
+        quality: "auto",
+        type: "embed",
+        server: "VidSrc"
+      });
+      // Provider 2: multiembed.mov
+      sources.push({
+        url: "https://multiembed.mov/?video_id=" + tmdbId + "&tmdb=1",
+        quality: "auto",
+        type: "embed",
+        server: "MultiEmbed"
+      });
     } else {
       var season = parts[2];
       var episode = parts[3];
-      embedUrl = "https://" + VIDSRC_HOST + "/v2/embed/tv/" + tmdbId + "/" + season + "/" + episode;
+      // Provider 1: vidsrc.net
+      sources.push({
+        url: "https://vidsrc.net/embed/tv?tmdb=" + tmdbId + "&season=" + season + "&episode=" + episode,
+        quality: "auto",
+        type: "embed",
+        server: "VidSrc"
+      });
+      // Provider 2: multiembed.mov
+      sources.push({
+        url: "https://multiembed.mov/?video_id=" + tmdbId + "&tmdb=1&s=" + season + "&e=" + episode,
+        quality: "auto",
+        type: "embed",
+        server: "MultiEmbed"
+      });
     }
 
-    log("Fetching embed page: " + embedUrl);
-
-    try {
-      var html = await http.get(embedUrl);
-
-      // Extract data-id values using regex only (avoid parseHtml — the
-      // VidSrc embed HTML is too large/complex for the bridge's JSON
-      // serialization and causes "_Map encodable" errors).
-      var regex = /data-id="([^"]+)"/g;
-      var dataIds = [];
-      var match;
-      while ((match = regex.exec(html)) !== null) {
-        dataIds.push(match[1]);
-      }
-
-      log("VidSrc: found " + dataIds.length + " data-id values");
-
-      if (dataIds.length < 2) {
-        log("VidSrc: could not find enough data-id values in embed page");
-        return { sources: [], subtitles: [] };
-      }
-
-      var dataId1 = dataIds[0];
-      var dataId2 = dataIds[1];
-
-      // Get servers list.
-      var serversUrl = "https://" + VIDSRC_HOST + "/api/episodes/" + dataId2 + "/servers?id=" + dataId1 + "&type=" + type;
-      if (type === "tv") {
-        serversUrl += "&season=" + parts[2] + "&episode=" + parts[3];
-      }
-
-      log("Fetching servers: " + serversUrl);
-      var serversData = await fetchJson(serversUrl, 2);
-
-      if (!serversData || !serversData.data || serversData.data.length === 0) {
-        log("VidSrc: no servers found");
-        return { sources: [], subtitles: [] };
-      }
-
-      // Get source URL from each server.
-      var sources = [];
-      var subtitles = [];
-
-      for (var s = 0; s < serversData.data.length && s < 3; s++) {
-        var server = serversData.data[s];
-        var hash = server.hash;
-        if (!hash) continue;
-
-        var sourceUrl = "https://" + VIDSRC_HOST + "/api/source/" + hash;
-        log("Fetching source: " + sourceUrl);
-        var sourceData = await fetchJson(sourceUrl, 2);
-
-        if (!sourceData) continue;
-
-        // Extract HLS URL from source response.
-        if (sourceData.url) {
-          sources.push({
-            url: sourceData.url,
-            quality: "auto",
-            type: sourceData.url.indexOf(".m3u8") !== -1 ? "hls" : "mp4",
-            server: server.name || ("Server " + (s + 1))
-          });
-        }
-
-        // Source may also contain an HLS URL in a different field.
-        if (sourceData.source) {
-          sources.push({
-            url: sourceData.source,
-            quality: "auto",
-            type: sourceData.source.indexOf(".m3u8") !== -1 ? "hls" : "mp4",
-            server: (server.name || "Server") + " " + (s + 1)
-          });
-        }
-
-        // Extract subtitles if present.
-        var subs = sourceData.subtitles || sourceData.tracks || [];
-        for (var t = 0; t < subs.length; t++) {
-          var sub = subs[t];
-          if (sub.url && sub.lang && sub.lang.toLowerCase() !== "thumbnails") {
-            subtitles.push({
-              url: sub.url,
-              lang: sub.lang || "Unknown",
-              label: sub.label || sub.lang || "Unknown",
-              type: "vtt"
-            });
-          }
-        }
-      }
-
-      log("VidSrc: found " + sources.length + " sources, " + subtitles.length + " subtitles");
-      return { sources: sources, subtitles: subtitles };
-
-    } catch (e) {
-      log("VidSrc error: " + e);
-      return { sources: [], subtitles: [] };
-    }
+    log("Returning " + sources.length + " embed sources");
+    return { sources: sources, subtitles: [] };
   }
 
   // ───────────────────────────────────────────────────────────
